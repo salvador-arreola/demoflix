@@ -3,10 +3,14 @@ import os
 import re
 import threading
 import uuid
+import urllib.error
+import urllib.request
 from contextlib import asynccontextmanager
 from pathlib import Path
 from urllib.parse import quote
 
+import certifi
+import google.auth
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -65,10 +69,64 @@ def _demo_rows() -> list[dict]:
     ]
 
 
+def _configure_tls_ca_bundle() -> None:
+    """Avoid SSL verify errors to GCE metadata / Google APIs on minimal VMs."""
+    if rb := os.environ.get("REQUESTS_CA_BUNDLE"):
+        os.environ.setdefault("SSL_CERT_FILE", rb)
+        return
+    if sf := os.environ.get("SSL_CERT_FILE"):
+        os.environ.setdefault("REQUESTS_CA_BUNDLE", sf)
+        return
+    ca = certifi.where()
+    if not Path(ca).is_file():
+        for path in (
+            "/etc/ssl/certs/ca-certificates.crt",
+            "/etc/pki/tls/certs/ca-bundle.crt",
+        ):
+            if Path(path).is_file():
+                ca = path
+                break
+    if Path(ca).is_file():
+        os.environ.setdefault("SSL_CERT_FILE", ca)
+        os.environ.setdefault("REQUESTS_CA_BUNDLE", ca)
+        os.environ.setdefault("CURL_CA_BUNDLE", ca)
+
+
+def _project_id_from_metadata() -> str | None:
+    try:
+        req = urllib.request.Request(
+            "http://metadata.google.internal/computeMetadata/v1/project/project-id",
+            headers={"Metadata-Flavor": "Google"},
+        )
+        with urllib.request.urlopen(req, timeout=2) as resp:
+            pid = resp.read().decode().strip()
+            return pid or None
+    except (OSError, urllib.error.URLError, TimeoutError):
+        return None
+
+
+def _resolve_gcp_project_id(auth_project: str | None) -> str | None:
+    if auth_project:
+        return auth_project
+    for key in ("GOOGLE_CLOUD_PROJECT", "GCP_PROJECT", "GCLOUD_PROJECT"):
+        v = os.environ.get(key, "").strip()
+        if v:
+            return v
+    return _project_id_from_metadata()
+
+
 def _client() -> storage.Client:
     global _storage_client
     if _storage_client is None:
-        _storage_client = storage.Client()
+        _configure_tls_ca_bundle()
+        credentials, project = google.auth.default()
+        project = _resolve_gcp_project_id(project)
+        if not project:
+            raise OSError(
+                "GCP project ID not found. Set GOOGLE_CLOUD_PROJECT or run on GCE "
+                "with metadata available."
+            )
+        _storage_client = storage.Client(credentials=credentials, project=project)
     return _storage_client
 
 

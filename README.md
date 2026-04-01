@@ -150,6 +150,18 @@ For anything beyond a quick demo, use `tmux`/`screen`, a process manager, or a r
 
 Get the VM’s external IP and open `http://EXTERNAL_IP:8080`.
 
+### TLS / SSL errors on the VM (`CERTIFICATE_VERIFY_FAILED`)
+
+If you see `RefreshError` or `SSLCertVerificationError` when calling the metadata server or Cloud Storage, the VM (or Python) may not be using a trusted CA bundle. Try:
+
+```bash
+sudo apt-get update && sudo apt-get install -y ca-certificates
+source .venv/bin/activate
+pip install -U certifi
+```
+
+Then restart `uvicorn`. The app sets `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` from **certifi** (or `/etc/ssl/certs/ca-certificates.crt`) before talking to Google APIs. You can still override with those env vars if your org uses a custom CA.
+
 ## API
 
 | Method | Path | Description |
