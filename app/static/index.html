@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Demo Netflix — GCE + Cloud Storage</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header class="top">
+      <div class="brand">DEMOFLIX</div>
+      <p class="tagline">Compute Engine + Cloud Storage</p>
+    </header>
+
+    <section class="upload-panel" id="upload-panel">
+      <h2>Add a movie</h2>
+      <form id="movie-form" class="movie-form">
+        <label>
+          Title
+          <input type="text" name="title" required maxlength="200" placeholder="Movie title" />
+        </label>
+        <label>
+          Poster
+          <input type="file" name="poster" accept="image/jpeg,image/png,image/webp,image/gif" required />
+        </label>
+        <button type="submit" id="submit-btn">Upload to bucket</button>
+      </form>
+      <p id="form-message" class="form-message" hidden></p>
+    </section>
+
+    <section class="row-section">
+      <h2 class="row-title">Catalog</h2>
+      <p id="empty-hint" class="empty-hint" hidden>
+        No movies yet. Upload a poster to create objects in Cloud Storage.
+      </p>
+      <div id="grid" class="poster-grid"></div>
+    </section>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>
