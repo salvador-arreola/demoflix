@@ -35,6 +35,8 @@ pip install -r requirements.txt
 | Variable | Description |
 |----------|-------------|
 | `GCS_BUCKET_NAME` | If set, uploads go to this bucket (name only, no `gs://`). |
+| `GOOGLE_CLOUD_PROJECT` | Optional. GCP project ID for the Storage client; on GCE, metadata usually supplies it. Set if you see “project not found” errors. |
+| `GCE_METADATA_MTLS_MODE` | Optional. The app sets **`none`** by default (HTTP metadata only) to avoid MDS HTTPS/mTLS SSL issues on some VMs. Use `default` or `strict` only if you need metadata mTLS. |
 | `DATA_DIR` | Optional. Local mode only: where `data/` lives (default: `<project>/data`). |
 
 See [`.env.example`](.env.example).
@@ -150,17 +152,26 @@ For anything beyond a quick demo, use `tmux`/`screen`, a process manager, or a r
 
 Get the VM’s external IP and open `http://EXTERNAL_IP:8080`.
 
-### TLS / SSL errors on the VM (`CERTIFICATE_VERIFY_FAILED`)
+### Metadata / `google-auth` and `GCE_METADATA_MTLS_MODE`
 
-If you see `RefreshError` or `SSLCertVerificationError` when calling the metadata server or Cloud Storage, the VM (or Python) may not be using a trusted CA bundle. Try:
+Newer **google-auth** can talk to the Compute Engine **metadata server** over **HTTPS with mTLS**, using certificate files under **`/run/google-mds-mtls/`** on the VM (Google installs them; the client looks there to verify the metadata endpoint). If that HTTPS path fails SSL verification on your image, the app sets **`GCE_METADATA_MTLS_MODE=none`** by default so metadata is read over plain **HTTP** on the instance link-local address instead (normal for many GCE setups). Set `GCE_METADATA_MTLS_MODE=default` or `strict` before starting the app only if you need metadata mTLS.
+
+### `403` on `catalog.json` / `storage.objects.get` denied
+
+The identity in the error (e.g. **`123456789-compute@developer.gserviceaccount.com`**) is the **default Compute Engine service account**. It only has access to Cloud Storage if you grant it on the bucket.
+
+Either:
+
+**A)** Grant that account on your bucket (replace project number and bucket name):
 
 ```bash
-sudo apt-get update && sudo apt-get install -y ca-certificates
-source .venv/bin/activate
-pip install -U certifi
+PROJECT_NUMBER=$(gcloud projects describe PROJECT_ID --format='value(projectNumber)')
+gsutil iam ch serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com:roles/storage.objectAdmin gs://BUCKET
 ```
 
-Then restart `uvicorn`. The app sets `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` from **certifi** (or `/etc/ssl/certs/ca-certificates.crt`) before talking to Google APIs. You can still override with those env vars if your org uses a custom CA.
+**B)** Or use a **dedicated** service account on the VM (see **§2. Service account and bucket IAM** above) with `--service-account=...` when creating the instance, and give **that** email `roles/storage.objectAdmin` on `gs://BUCKET`.
+
+Also ensure **`GCS_BUCKET_NAME`** is the **bucket name** (e.g. `my-demoflix-bucket`), not the GCP project ID.
 
 ## API
 
